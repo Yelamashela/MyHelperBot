@@ -1,3 +1,4 @@
-myhelperbot-baad3781f455.json
-__pycache__/
+google-credentials.json
 .env
+__pycache__/
+*.pyc
