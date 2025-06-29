@@ -23,7 +23,10 @@ GOOGLE_CREDENTIALS = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
 
 # --- Google Sheets ---
 try:
-    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
     credentials = Credentials.from_service_account_info(GOOGLE_CREDENTIALS, scopes=scopes)
     client = gspread.authorize(credentials)
     sheet = client.open("MyHelperBot_Анкеты").sheet1
