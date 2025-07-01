@@ -31,7 +31,7 @@ try:
     client = gspread.authorize(credentials)
     sheet = client.open("MyHelperBot_Анкеты").sheet1
 except Exception as e:
-    logger.error("❌ Ошибка подключения к Google Sheets:", e)
+    logger.error(f"❌ Ошибка подключения к Google Sheets: {e}")
     sheet = None
 
 # --- Состояния анкеты ---
