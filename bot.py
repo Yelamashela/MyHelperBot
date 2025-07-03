@@ -20,7 +20,10 @@ GOOGLE_CREDENTIALS = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
 
 # --- Google Sheets ---
 try:
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
     credentials = Credentials.from_service_account_info(GOOGLE_CREDENTIALS, scopes=scopes)
     client = gspread.authorize(credentials)
     sheet = client.open("MyHelperBot_Анкеты").sheet1
@@ -32,36 +35,40 @@ except Exception as e:
 LANG, PROFILE, NAME, LOCATION, DOB, CONCERN, FORMAT, TRIED, READY = range(9)
 user_lang = {}
 
-# --- Меню по профилю ---
-def main_menu(profile):
-    def btn(text, cb): return InlineKeyboardButton(text, callback_data=cb)
+# --- Главное меню ---
+def get_main_menu(profile: str):
+    btn = InlineKeyboardButton
+    buttons = []
+
     if profile == "🤱 Я мама":
-        return InlineKeyboardMarkup([
-            [btn("🩺 Консультации", "services"), btn("📚 Курсы", "courses")],
-            [btn("📥 Заполнить анкету", "form")],
+        buttons = [
+            [btn("📚 Курсы", "courses"), btn("🩺 Услуги", "services")],
+            [btn("👩‍⚕ О враче", "about_doctor"), btn("📥 Анкета", "form")],
             [btn("📍 Контакты", "contacts")]
-        ])
+        ]
     elif profile == "🤰 Беременная":
-        return InlineKeyboardMarkup([
-            [btn("🤱 Подготовка к родам", "doula")],
-            [btn("📚 Курс для беременных", "pregnancy_course")],
+        buttons = [
+            [btn("🤱 Подготовка к родам", "doula"), btn("📚 Курсы", "courses")],
+            [btn("👩‍⚕ О враче", "about_doctor"), btn("📥 Анкета", "form")],
             [btn("📍 Контакты", "contacts")]
-        ])
+        ]
     elif profile == "🩺 Специалист":
-        return InlineKeyboardMarkup([
+        buttons = [
             [btn("🌟 Наставничество", "mentorship")],
             [btn("📍 Контакты", "contacts")]
-        ])
-    return InlineKeyboardMarkup([[btn("📥 Анкета", "form")]])
+        ]
+    return InlineKeyboardMarkup(buttons)
 
-# --- Старт ---
+# --- Команда /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[
         InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"),
         InlineKeyboardButton("🇰🇿 Қазақша", callback_data="lang_kz")
     ]]
     await update.message.reply_text(
-        "👶 <b>Добро пожаловать в MyHelperBot!</b>\n\nВыберите язык обслуживания:",
+        "👶 <b>Добро пожаловать в MyHelperBot!</b>\n\n"
+        "✨ Я помогу вам с заботой, профессионализмом и теплом.\n\n"
+        "Выберите язык / Тілді таңдаңыз:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
@@ -77,7 +84,10 @@ async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("🤰 Беременная", callback_data="profile_pregnant"),
         InlineKeyboardButton("🩺 Специалист", callback_data="profile_doctor")
     ]]
-    await query.edit_message_text("Кто вы?", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.message.reply_text(
+        "🌸 Давайте начнём. Кто вы?" if lang == "ru" else "🌸 Алдымен кімсіз?",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 # --- Установка профиля ---
 async def set_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -90,94 +100,114 @@ async def set_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     profile = profile_map[query.data]
     context.user_data["profile"] = profile
-    await query.edit_message_text("✅ Профиль выбран!", reply_markup=main_menu(profile))
-
-# --- Анкета ---
-questions = {
-    NAME: "Как вас зовут?",
-    LOCATION: "Город/страна:",
-    DOB: "Дата родов (дд.мм.гггг):",
-    CONCERN: "Что вас беспокоит?",
-    FORMAT: "Формат: онлайн / оффлайн / выезд?",
-    TRIED: "Что уже пробовали?",
-    READY: "Готовы к работе и оплате?"
-}
-
-async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    idx = context.user_data.get("question", NAME)
-    step = idx - NAME + 1
-    await update.callback_query.message.reply_text(f"{questions[idx]}\n\n📊 Шаг {step} из 7")
-    context.user_data["question"] = idx
-    return idx
-
-async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    idx = context.user_data.get("question")
-    answer = update.message.text.strip()
-
-    if idx == DOB:
-        try:
-            datetime.datetime.strptime(answer, "%d.%m.%Y")
-        except:
-            await update.message.reply_text("❗ Пожалуйста, укажите дату в формате дд.мм.гггг")
-            return idx
-
-    context.user_data[idx] = answer
-    idx += 1
-    if idx > READY:
-        if sheet:
-            row = [context.user_data.get(i, '') for i in range(NAME, READY + 1)]
-            sheet.append_row(row)
-        await update.message.reply_text("✅ Спасибо! Мы с вами свяжемся в течение 24ч.")
-        profile = context.user_data.get("profile")
-        await update.message.reply_text("📋 Главное меню:", reply_markup=main_menu(profile))
-        return ConversationHandler.END
-    context.user_data["question"] = idx
-    await update.message.reply_text(questions[idx])
-    return idx
+    lang = user_lang.get(query.from_user.id, "ru")
+    await query.message.reply_text(
+        "✅ Профиль сохранён! Вот главное меню:",
+        reply_markup=get_main_menu(profile)
+    )
+    # Автопоказ блока "О враче"
+    if profile in ["🤱 Я мама", "🤰 Беременная"]:
+        await query.message.reply_text(
+            "<b>👩‍⚕ Жуманова Мерей Насірханқызы</b>\n\n"
+            "Врач-неонатолог с опытом более 13 лет.\n"
+            "🔹 Специализация: реанимация, хирургия, роды, выхаживание недоношенных.\n"
+            "👶 Более 18 000 малышей прошли через её руки.\n\n"
+            "<i>«Вы не одна. Я рядом, чтобы помочь вам понять малыша — с первых минут жизни и дальше.»</i>\n\n"
+            "📩 Хотите получить помощь? Начнём с короткой анкеты:",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📥 Заполнить анкету", callback_data="form")],
+                [InlineKeyboardButton("📋 Главное меню", callback_data="menu")]
+            ]),
+            parse_mode="HTML"
+        )
 
 # --- Обработка кнопок ---
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
+    profile = context.user_data.get("profile", "🤱 Я мама")
 
-    if data == "services":
-        await query.edit_message_text("🩺 Онлайн или офлайн?", reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🧑‍💻 Онлайн", callback_data="online")],
-            [InlineKeyboardButton("🏠 Выезд на дом", callback_data="offline")],
-            [InlineKeyboardButton("🔙 Назад", callback_data="menu")]
-        ]))
-    elif data == "online":
-        await query.edit_message_text(
-            "📞 <b>Онлайн-консультация</b> — 2 часа видеосозвона, 7 дней WhatsApp-сопровождения.\nЦена: 120 000 тг",
+    if data == "about_doctor":
+        await query.message.reply_text(
+            "<b>👩‍⚕ Жуманова Мерей Насірханқызы</b>\n\n"
+            "Врач-неонатолог с опытом более 13 лет.\n"
+            "🔹 Реанимация новорождённых, хирургия, патология, роды.\n"
+            "👶 Более 18 000 малышей прошли через её руки.\n\n"
+            "<i>«Вы не одна. Я рядом, чтобы помочь вам понять малыша — с первых минут жизни и дальше.»</i>\n\n"
+            "📩 Хотите получить помощь? Начнём с анкеты:",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📥 Записаться", callback_data="form")],
-                [InlineKeyboardButton("🔙 Назад", callback_data="services")]
-            ]), parse_mode="HTML"
+                [InlineKeyboardButton("📥 Анкета", callback_data="form")],
+                [InlineKeyboardButton("📋 Назад", callback_data="menu")]
+            ]),
+            parse_mode="HTML"
         )
-    elif data == "offline":
-        await query.edit_message_text(
-            "🏠 <b>Выезд на дом</b> — осмотр, обучение, поддержка 7 дней.\nЦена: 170 000 тг (Шымкент) / 300 000 тг + перелёт",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📥 Записаться", callback_data="form")],
-                [InlineKeyboardButton("🔙 Назад", callback_data="services")]
-            ]), parse_mode="HTML"
-        )
+
+    elif data == "menu":
+        await query.message.reply_text("📋 Главное меню:", reply_markup=get_main_menu(profile))
+
     elif data == "form":
         context.user_data["question"] = NAME
+        await query.message.reply_text("📝 Давайте начнём анкету!")
         return await ask_question(update, context)
-    elif data == "contacts":
-        await query.edit_message_text(
-            "📱 Контакты:\nWhatsApp: +7 771 147 10 34\nTelegram: @merey_neonatologist\nКанал: https://t.me/+ohgaSD3VEQc5MGZi",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📋 Главное меню", callback_data="menu")]])
+
+    elif data == "courses":
+        await query.message.reply_text(
+            "📚 Доступные курсы:\n\n"
+            "1. 👶 0–3 мес: питание, колики, желтуха, кожа\n"
+            "2. 👶 3–6 мес: моторика, массаж, развитие\n"
+            "3. 🌡 Температура и иммунитет\n\n"
+            "Нажмите на интересующий курс для подробностей.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("0–3 мес", callback_data="course_0_3")],
+                [InlineKeyboardButton("3–6 мес", callback_data="course_3_6")],
+                [InlineKeyboardButton("Температура и иммунитет", callback_data="course_temp")],
+                [InlineKeyboardButton("📋 Назад", callback_data="menu")]
+            ])
         )
-    elif data == "menu":
-        profile = context.user_data.get("profile")
-        await query.edit_message_text("📋 Главное меню:", reply_markup=main_menu(profile))
+
+    # Допиши обработку других курсов, услуг, консультаций и т.д.
+
+# --- Анкета ---
+questions = {
+    NAME: "📝 Как вас зовут?",
+    LOCATION: "🌍 В каком вы городе/стране?",
+    DOB: "📅 Дата родов?",
+    CONCERN: "🤔 Что вас беспокоит?",
+    FORMAT: "📌 Онлайн / оффлайн / выезд?",
+    TRIED: "🔄 Что уже пробовали?",
+    READY: "💬 Готовы к работе и оплате?"
+}
+
+async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    step = context.user_data["question"]
+    total = READY - NAME + 1
+    progress = step - NAME + 1
+    await update.message.reply_text(f"{questions[step]}\n\nШаг {progress} из {total}")
+    return step
+
+async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    step = context.user_data["question"]
+    answer = update.message.text.strip()
+    if not answer:
+        await update.message.reply_text("❗ Пожалуйста, введите корректный ответ.")
+        return step
+    context.user_data[step] = answer
+    next_step = step + 1
+    if next_step > READY:
+        if sheet:
+            row = [context.user_data.get(i, "") for i in range(NAME, READY + 1)]
+            sheet.append_row(row)
+        await update.message.reply_text("✅ Анкета получена! Мы с вами свяжемся в течение 24ч.")
+        profile = context.user_data.get("profile", "🤱 Я мама")
+        await update.message.reply_text("📋 Главное меню:", reply_markup=get_main_menu(profile))
+        return ConversationHandler.END
+    context.user_data["question"] = next_step
+    return await ask_question(update, context)
 
 # --- Неизвестное сообщение ---
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❗ Пожалуйста, воспользуйтесь меню. Я здесь, чтобы помочь 🌸")
+    await update.message.reply_text("ℹ Пожалуйста, используйте кнопки меню.")
 
 # --- Основной запуск ---
 def main():
